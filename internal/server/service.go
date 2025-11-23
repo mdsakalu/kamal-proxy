@@ -48,12 +48,35 @@ const (
 	DefaultMaxResponseBodySize = 0
 
 	DefaultStopMessage = ""
+
+	DefaultForwardAuthTimeout = time.Second * 5
 )
 
 var (
 	ErrorRolloutTargetNotSet                 = errors.New("rollout target not set")
 	ErrorUnableToLoadErrorPages              = errors.New("unable to load error pages")
 	ErrorAutomaticTLSDoesNotSupportWildcards = errors.New("automatic TLS does not support wildcards")
+	ErrorForwardAuthURLRequired              = errors.New("forward auth URL is required")
+)
+
+var (
+	DefaultForwardAuthCopyHeaders = []string{
+		"Authorization",
+		"Remote-User",
+		"Remote-Name",
+		"Remote-Email",
+		"Remote-Groups",
+	}
+
+	DefaultForwardAuthAllowedHeaders = []string{
+		"Accept",
+		"Accept-Encoding",
+		"Accept-Language",
+		"Authorization",
+		"Content-Type",
+		"Cookie",
+		"User-Agent",
+	}
 )
 
 type TargetSlot int
@@ -70,19 +93,28 @@ type HealthCheckConfig struct {
 	Timeout  time.Duration `json:"timeout"`
 }
 
+type ForwardAuthConfig struct {
+	URL                string        `json:"url"`
+	RequestTimeout     time.Duration `json:"request_timeout"`
+	CopyHeaders        []string      `json:"copy_headers"`
+	AllowedHeaders     []string      `json:"allowed_headers"`
+	TrustForwardHeader bool          `json:"trust_forward_header"`
+}
+
 type ServiceOptions struct {
-	Hosts                       []string      `json:"hosts"`
-	PathPrefixes                []string      `json:"path_prefixes"`
-	TLSEnabled                  bool          `json:"tls_enabled"`
-	TLSCertificatePath          string        `json:"tls_certificate_path"`
-	TLSPrivateKeyPath           string        `json:"tls_private_key_path"`
-	TLSRedirect                 bool          `json:"tls_redirect"`
-	ACMEDirectory               string        `json:"acme_directory"`
-	ACMECachePath               string        `json:"acme_cache_path"`
-	ErrorPagePath               string        `json:"error_page_path"`
-	StripPrefix                 bool          `json:"strip_prefix"`
-	WriterAffinityTimeout       time.Duration `json:"writer_affinity_timeout"`
-	ReadTargetsAcceptWebsockets bool          `json:"read_targets_accept_websockets"`
+	Hosts                       []string           `json:"hosts"`
+	PathPrefixes                []string           `json:"path_prefixes"`
+	TLSEnabled                  bool               `json:"tls_enabled"`
+	TLSCertificatePath          string             `json:"tls_certificate_path"`
+	TLSPrivateKeyPath           string             `json:"tls_private_key_path"`
+	TLSRedirect                 bool               `json:"tls_redirect"`
+	ACMEDirectory               string             `json:"acme_directory"`
+	ACMECachePath               string             `json:"acme_cache_path"`
+	ErrorPagePath               string             `json:"error_page_path"`
+	StripPrefix                 bool               `json:"strip_prefix"`
+	WriterAffinityTimeout       time.Duration      `json:"writer_affinity_timeout"`
+	ReadTargetsAcceptWebsockets bool               `json:"read_targets_accept_websockets"`
+	ForwardAuth                 *ForwardAuthConfig `json:"forward_auth,omitempty"`
 }
 
 func (so *ServiceOptions) Normalize() {
@@ -395,6 +427,11 @@ func (s *Service) createCertManager(options ServiceOptions) (CertManager, error)
 func (s *Service) createMiddleware(options ServiceOptions, certManager CertManager) (http.Handler, error) {
 	var err error
 	var handler http.Handler = http.HandlerFunc(s.serviceRequestWithTarget)
+
+	if options.ForwardAuth != nil {
+		slog.Debug("Using forward auth", "service", s.name, "url", options.ForwardAuth.URL)
+		handler = WithForwardAuthMiddleware(*options.ForwardAuth, handler)
+	}
 
 	if options.ErrorPagePath != "" {
 		slog.Debug("Using custom error pages", "service", s.name, "path", options.ErrorPagePath)

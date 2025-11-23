@@ -143,6 +143,47 @@ your certificate file and the corresponding private key:
     kamal-proxy deploy service1 --target web-1:3000 --host app1.example.com --tls --tls-certificate-path cert.pem --tls-private-key-path key.pem
 
 
+### Forward Authentication
+
+Kamal Proxy supports delegating authentication to external authentication services
+using the forward auth pattern (similar to Traefik's ForwardAuth, Caddy's forward_auth,
+and nginx's auth_request). This allows you to protect your applications with services
+like Authelia, oauth2-proxy, or any other authentication gateway.
+
+When forward auth is enabled, Kamal Proxy sends a subrequest to the configured
+authentication service before proxying to your application. If the auth service
+returns a 2xx status code, the request is allowed through. Otherwise, the response
+from the auth service is returned to the client (typically a redirect to a login page).
+
+#### Using with Authelia
+
+    kamal-proxy deploy myapp \
+      --target localhost:3000 \
+      --host app.example.com \
+      --forward-auth-url http://authelia:9091/api/authz/forward-auth
+
+#### Using with oauth2-proxy
+
+    kamal-proxy deploy myapp \
+      --target localhost:3000 \
+      --host app.example.com \
+      --forward-auth-url http://oauth2-proxy:4180/oauth2/auth \
+      --forward-auth-copy-headers "X-Auth-Request-User,X-Auth-Request-Email"
+
+#### Configuration Options
+
+- `--forward-auth-url`: URL of the authentication service (required to enable forward auth)
+- `--forward-auth-timeout`: Timeout for auth requests (default: 5s)
+- `--forward-auth-copy-headers`: Headers to copy from auth response to the original request
+  (default: Authorization, Remote-User, Remote-Name, Remote-Email, Remote-Groups)
+- `--forward-auth-allowed-headers`: Headers to forward to the auth service
+  (default: Accept, Accept-Encoding, Accept-Language, Authorization, Content-Type, Cookie, User-Agent)
+- `--forward-auth-trust-forward-header`: Trust X-Forwarded-For header from client (default: false)
+
+The proxy automatically adds X-Forwarded-* headers (Method, Uri, Host, Proto, For) to
+help the auth service make informed decisions about the request.
+
+
 ## Specifying `run` options with environment variables
 
 In some environments, like when running a Docker container, it can be convenient

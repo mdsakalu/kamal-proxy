@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/rpc"
 	"slices"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -11,9 +12,14 @@ import (
 )
 
 type deployCommand struct {
-	cmd        *cobra.Command
-	args       server.DeployArgs
-	tlsStaging bool
+	cmd                           *cobra.Command
+	args                          server.DeployArgs
+	tlsStaging                    bool
+	forwardAuthURL                *string
+	forwardAuthTimeout            *time.Duration
+	forwardAuthCopyHeaders        *[]string
+	forwardAuthAllowedHeaders     *[]string
+	forwardAuthTrustForwardHeader *bool
 }
 
 func newDeployCommand() *deployCommand {
@@ -63,6 +69,20 @@ func newDeployCommand() *deployCommand {
 
 	deployCommand.cmd.Flags().BoolVar(&deployCommand.args.TargetOptions.ForwardHeaders, "forward-headers", false, "Forward X-Forwarded headers to target (default false if TLS enabled; otherwise true)")
 
+	// Forward Auth flags
+	forwardAuthURL := deployCommand.cmd.Flags().String("forward-auth-url", "", "URL of the forward auth service (e.g., http://authelia:9091/api/authz/forward-auth)")
+	forwardAuthTimeout := deployCommand.cmd.Flags().Duration("forward-auth-timeout", server.DefaultForwardAuthTimeout, "Timeout for forward auth requests")
+	forwardAuthCopyHeaders := deployCommand.cmd.Flags().StringSlice("forward-auth-copy-headers", server.DefaultForwardAuthCopyHeaders, "Headers to copy from auth response to original request")
+	forwardAuthAllowedHeaders := deployCommand.cmd.Flags().StringSlice("forward-auth-allowed-headers", server.DefaultForwardAuthAllowedHeaders, "Headers to forward to auth service")
+	forwardAuthTrustForwardHeader := deployCommand.cmd.Flags().Bool("forward-auth-trust-forward-header", false, "Trust X-Forwarded-For header from client")
+
+	// Store forward auth flags in a pre-run hook
+	deployCommand.forwardAuthURL = forwardAuthURL
+	deployCommand.forwardAuthTimeout = forwardAuthTimeout
+	deployCommand.forwardAuthCopyHeaders = forwardAuthCopyHeaders
+	deployCommand.forwardAuthAllowedHeaders = forwardAuthAllowedHeaders
+	deployCommand.forwardAuthTrustForwardHeader = forwardAuthTrustForwardHeader
+
 	deployCommand.cmd.MarkFlagRequired("target")
 	deployCommand.cmd.MarkFlagsRequiredTogether("tls-certificate-path", "tls-private-key-path")
 
@@ -104,6 +124,17 @@ func (c *deployCommand) preRun(cmd *cobra.Command, args []string) error {
 
 		if !slices.Contains(c.args.ServiceOptions.PathPrefixes, "/") {
 			return fmt.Errorf("TLS settings must be specified on the root path service")
+		}
+	}
+
+	// Configure forward auth if URL is provided
+	if *c.forwardAuthURL != "" {
+		c.args.ServiceOptions.ForwardAuth = &server.ForwardAuthConfig{
+			URL:                *c.forwardAuthURL,
+			RequestTimeout:     *c.forwardAuthTimeout,
+			CopyHeaders:        *c.forwardAuthCopyHeaders,
+			AllowedHeaders:     *c.forwardAuthAllowedHeaders,
+			TrustForwardHeader: *c.forwardAuthTrustForwardHeader,
 		}
 	}
 
