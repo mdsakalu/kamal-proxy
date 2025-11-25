@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Kamal Proxy with ForwardAuth support
+  kamal-proxy:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - kamal-proxy-config:/root/.config/kamal-proxy
+      - ./scripts:/scripts
+    networks:
+      - test-network
+    command: run
+
+  # Authelia - Authentication service
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    volumes:
+      - ./authelia:/config
+    networks:
+      - test-network
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+
+  # Redis for Authelia session storage
+  redis:
+    image: redis:alpine
+    container_name: authelia-redis
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Test backend service - simple whoami service
+  whoami:
+    image: traefik/whoami:latest
+    container_name: whoami
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Second test backend - nginx with custom page
+  app:
+    image: nginx:alpine
+    container_name: test-app
+    volumes:
+      - ./app/html:/usr/share/nginx/html:ro
+    networks:
+      - test-network
+    restart: unless-stopped
+
+  # Setup container to deploy services to kamal-proxy
+  setup:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile
+    depends_on:
+      - kamal-proxy
+      - authelia
+      - whoami
+      - app
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - test-network
+    entrypoint: ["/scripts/setup.sh"]
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  kamal-proxy-config:

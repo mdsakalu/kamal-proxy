@@ -1,0 +1,23 @@
+---
+###############################################################
+#                         Users Database                      #
+###############################################################
+
+# This file contains users for testing Authelia
+# Password is 'password' for all users (hashed with argon2id)
+
+users:
+  testuser:
+    displayname: "Test User"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$BpLfh1AiTRiotxg3FJIFZQ$kcT/AG00/IEHZA1OaJGNZL/QeOoR2Z4U/lIb+x1wJ9E"
+    email: testuser@localhost
+    groups:
+      - admins
+      - dev
+
+  john:
+    displayname: "John Doe"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$BpLfh1AiTRiotxg3FJIFZQ$kcT/AG00/IEHZA1OaJGNZL/QeOoR2Z4U/lIb+x1wJ9E"
+    email: john.doe@localhost
+    groups:
+      - dev
